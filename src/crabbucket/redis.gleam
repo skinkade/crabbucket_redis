@@ -41,20 +41,25 @@ pub type RemainingTokenCountFailure {
 /// - Else, decrement remaining tokens, saving and returned that value
 /// - All of the above return values are part of a tuple:
 ///   {remaining_tokens, timestamp_of_next_time_window}
+/// - An expiration time is set on the key, but this is more for garbage collection,
+///   and is not relied on
 const script = "local key = KEYS[1]
 local window_start_arg = tonumber(ARGV[1])
 local window_duration_arg = tonumber(ARGV[2])
 local tokens_arg = tonumber(ARGV[3])
+local expiration_seconds = math.floor(window_duration_arg / 1000) + 1
 local window_start = tonumber(redis.call('HGET', key, 'window_start'))
 local tokens = tonumber(redis.call('HGET', key, 'tokens'))
 if window_start == nil or tokens == nil then
     redis.call('HSET', key, 'window_start', window_start_arg, 'tokens', tokens_arg)
+    redis.call('EXPIRE', key, expiration_seconds)
     return {tokens_arg, window_start_arg + window_duration_arg}
 end
 local time_arr = redis.call('TIME')
 local time_ms = (time_arr[1] * 1000) + (math.floor(time_arr[2] / 1000))
 if (window_start + window_duration_arg) < time_ms then
     redis.call('HSET', key, 'window_start', window_start_arg, 'tokens', tokens_arg)
+    redis.call('EXPIRE', key, expiration_seconds)
     return {tokens_arg, window_start_arg + window_duration_arg}
 end
 if tokens <= 0 then
