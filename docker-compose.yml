@@ -1,0 +1,7 @@
+version: "3.8"
+
+services:
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    ports:
+      - "6379:6379"
