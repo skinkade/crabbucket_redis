@@ -31,6 +31,16 @@ pub type RemainingTokenCountFailure {
   RedisError(error: Error)
 }
 
+/// Logic:
+/// - Try to get the current value for this token bucket key
+/// - If there is none, the action should be allowed,
+///   with the current time and remaining tokens being cached
+/// - If there was a value, check if its time window has passed,
+///   in which case we can 'reset' it to a fresh value, like above
+/// - If no tokens remain in the current entry, return -1
+/// - Else, decrement remaining tokens, saving and returned that value
+/// - All of the above return values are part of a tuple:
+///   {remaining_tokens, timestamp_of_next_time_window}
 const script = "local key = KEYS[1]
 local window_start_arg = tonumber(ARGV[1])
 local window_duration_arg = tonumber(ARGV[2])
@@ -88,6 +98,12 @@ pub fn remaining_tokens_for_key(
     |> result.map_error(fn(e) { RedisError(e) }),
   )
 
+  // Implementation detail:
+  // Lua script executed by Redis returns _how many tokens are remaining_,
+  // so we can't check for tokens_remaining <= 0, which would cause issues
+  // in the case of having just used the last token in a window.
+  // Therefore, a negative remaining token value is used to indicate the case
+  // of the cache entry not having remaining tokens.
   case results {
     [resp.Array([resp.Integer(tokens_remaining), resp.Integer(next_reset)])] -> {
       case tokens_remaining < 0 {
